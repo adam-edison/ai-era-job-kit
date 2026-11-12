@@ -201,6 +201,7 @@ def main(argv=None) -> int:
     ap.add_argument("--role")
     ap.add_argument("--out", help="where to write the draft (outside any git repo)")
     ap.add_argument("--md", help="also write the report here")
+    ap.add_argument("--allow-repo", action="store_true", help="allow --out inside a private git repository")
     a = ap.parse_args(argv)
     try:
         if a.check:
@@ -212,8 +213,9 @@ def main(argv=None) -> int:
             return 0 if c["pass"] else 1
         if not a.portfolio:
             ap.error("give --portfolio (or --check RESUME)")
-        if a.out and sg.in_git_repo(pathlib.Path(a.out).expanduser().resolve()):
-            raise ValueError(f"{a.out} is inside a git repository. Keep resumes out of git, the portfolio repo included.")
+        if a.out and not a.allow_repo and sg.in_git_repo(pathlib.Path(a.out).expanduser().resolve()):
+            raise ValueError(f"{a.out} is inside a git repository. Keep resumes out of git, the portfolio repo included, "
+                             "or pass --allow-repo if the repository is private.")
         record = json.loads(pathlib.Path(a.portfolio).expanduser().read_text())
         market, vocab = load_market(a.market)
         r = rebuild(record, read_brag(a.brag), market, vocab, a.role)

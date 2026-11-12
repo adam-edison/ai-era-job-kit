@@ -306,13 +306,15 @@ def main(argv=None) -> int:
     ap.add_argument("--linkedin", help="linkedin-score.json from step 2: skills shown in Experience, Projects, Featured")
     ap.add_argument("--json")
     ap.add_argument("--md")
+    ap.add_argument("--allow-repo", action="store_true", help="allow the resume and reports inside a private git repository")
     a = ap.parse_args(argv)
     if a.need < 1:
         ap.error("--need must be 1 or more")
     if not (a.onet or a.role):
         ap.error("give --onet or --role")
-    if any(sg.in_git_repo(pathlib.Path(x).expanduser().resolve()) for x in (a.resume, a.json, a.md) if x):
-        print("REFUSED: keep resumes and their scores outside any git repository.", file=sys.stderr)
+    if not a.allow_repo and any(sg.in_git_repo(pathlib.Path(x).expanduser().resolve()) for x in (a.resume, a.json, a.md) if x):
+        print("REFUSED: keep resumes and their scores outside any git repository, "
+              "or pass --allow-repo if the repository is private.", file=sys.stderr)
         return 2
     try:
         text = docs.read_text(a.resume)

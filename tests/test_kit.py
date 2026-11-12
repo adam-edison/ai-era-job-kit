@@ -181,6 +181,20 @@ class TestScreenGrade(unittest.TestCase):
             finally:
                 q.unlink(); g.unlink()
 
+    def test_allow_repo_grades_inside_a_private_repo(self):
+        with tempfile.TemporaryDirectory() as td:
+            subprocess.run(["git", "init", "-q", td], check=True)
+            res = pathlib.Path(td) / "resume.txt"
+            res.write_text((FIX / "screen_resume.txt").read_text())
+            q = pathlib.Path(td) / "quals.json"
+            g = pathlib.Path(td) / "grades.json"
+            md = pathlib.Path(td) / "screen.md"
+            q.write_text(json.dumps(self.quals))
+            g.write_text(json.dumps(self.grades({"B1", "B2", "B3", "B4"})))
+            self.sg.main(["grade", "--resume", str(res), "--quals", str(q), "--grades", str(g),
+                          "--md", str(md), "--allow-repo"])
+            self.assertIn("Screen Grade", md.read_text())
+
 
 class TestFunnel(unittest.TestCase):
     def test_lifecycle_and_report(self):
@@ -573,6 +587,16 @@ class TestScoringChain(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertFalse((repo / "r.txt").exists())
 
+    def test_step7_allow_repo_writes_into_a_private_repo(self):
+        import resume_rebuild
+        repo = self.tmp / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        rc = resume_rebuild.main(["--portfolio", str(ROOT / "templates" / "portfolio.json"),
+                                  "--out", str(repo / "r.txt"), "--allow-repo"])
+        self.assertEqual(rc, 0)
+        self.assertIn("EXPERIENCE", (repo / "r.txt").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -784,6 +808,18 @@ class TestResumeScoreRules(unittest.TestCase):
                 self.assertEqual(rs.main(base + ["--md", str(ROOT / "leak.md")]), 2)  # the report quotes the resume
                 with self.assertRaises(SystemExit):
                     rs.main(base + ["--need", "0"])
+
+    def test_allow_repo_scores_inside_a_private_repo(self):
+        import resume_score as rs
+        with tempfile.TemporaryDirectory() as d:
+            subprocess.run(["git", "init", "-q", d], check=True)
+            resume = pathlib.Path(d) / "r.txt"
+            resume.write_text(self.RESUME)
+            base = ["--resume", str(resume), "--onet", "15-1252.00", "--md", str(pathlib.Path(d) / "score.md")]
+            offline = mock.patch.object(rs.onet_mod, "Onet", side_effect=rs.FetchError("offline"))
+            with offline:
+                self.assertEqual(rs.main(base), 2)                   # refused before any pull
+                self.assertEqual(rs.main(base + ["--allow-repo"]), 3)  # let through: stops at the offline pull
         self.assertFalse((ROOT / "leak.md").exists())
 
     def test_every_surface_score_carries_the_calibration(self):
@@ -1027,3 +1063,11 @@ class TestScoreAll(unittest.TestCase):
         self.assertEqual(self._run(["--resume", "me.pdf", "--role", "x"]), 2)
         self.assertEqual(self.calls, [])
         self.assertFalse((self.tmp / "score-all.json").exists())
+
+    def test_allow_repo_runs_in_a_private_repo_and_is_remembered(self):
+        subprocess.run(["git", "init", "-q", str(self.tmp)], check=True)
+        self.assertEqual(self._run(["--resume", "me.pdf", "--onet", "15-1252.00", "--allow-repo"]), 0)
+        self.assertIn("--allow-repo", dict(self.calls)["resume"])
+        self.calls.clear()
+        self.assertEqual(self._run([]), 0)  # no flags the second time
+        self.assertEqual([c[0] for c in self.calls], ["resume"])
