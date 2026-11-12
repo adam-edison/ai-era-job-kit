@@ -533,6 +533,7 @@ def main(argv=None) -> int:
     g.add_argument("--portfolio", help="portfolio.json, to show which gaps your portfolio already proves")
     g.add_argument("--out")
     g.add_argument("--md")
+    g.add_argument("--allow-repo", action="store_true", help="allow the resume and reports inside a private git repository")
     ag = sub.add_parser("agree", help="measure how far two graders agree on the same posting")
     ag.add_argument("--quals", required=True)
     ag.add_argument("--grades", required=True, nargs=2, metavar="GRADES")
@@ -579,8 +580,9 @@ def main(argv=None) -> int:
 
     resume = pathlib.Path(a.resume).expanduser().resolve()
     for p in [resume] + [pathlib.Path(x).expanduser().resolve() for x in (a.out, a.md) if x]:
-        if in_git_repo(p):
-            refuse(f"{p} is inside a git repository. Keep resumes and reports out of repos (they end up on GitHub).")
+        if not a.allow_repo and in_git_repo(p):
+            refuse(f"{p} is inside a git repository. Keep resumes and reports out of repos (they end up on GitHub), "
+                   "or pass --allow-repo if the repository is private.")
     try:
         quals = json.loads(pathlib.Path(a.quals).read_text())
         grades = json.loads(pathlib.Path(a.grades).read_text())

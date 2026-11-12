@@ -7,6 +7,8 @@
 
   python3 score_all.py     # every run after that: it remembers what you gave it
 
+  --allow-repo lets the work folder sit inside a private git repository; it is remembered too.
+
 It runs the same scripts you would run by hand, in order, and writes every report into the folder:
   1. resume_score.py     resume-score.json / .md
   2. linkedin_score.py   linkedin-score.json / .md     (with --linkedin)
@@ -42,7 +44,7 @@ import scorecard  # noqa: E402
 import screen_grade as sg  # noqa: E402
 
 SAVED = "score-all.json"
-KEYS = ("resume", "role", "onet", "postings", "linkedin", "github", "repos", "url", "portfolio", "checklist")
+KEYS = ("resume", "role", "onet", "postings", "linkedin", "github", "repos", "url", "portfolio", "checklist", "allow_repo")
 NAME = {"resume": "Resume", "linkedin": "LinkedIn", "github": "GitHub", "portfolio": "Portfolio"}
 
 
@@ -77,7 +79,8 @@ def run(s: dict, folder: pathlib.Path) -> int:
         scored[surface] = path
 
     lane = ["--onet", s["onet"]] if s.get("onet") else ["--role", s["role"]]
-    code, text = quiet(resume_score.main, ["--resume", at(s["resume"]), *lane, *opt("--postings", "postings"),
+    allow = ["--allow-repo"] if s.get("allow_repo") else []
+    code, text = quiet(resume_score.main, ["--resume", at(s["resume"]), *lane, *opt("--postings", "postings"), *allow,
                                            "--json", out("resume-score.json"), "--md", out("resume-score.md")])
     if code == 1:  # read, but no score: the parse gate. The report says what to fix.
         print(text)
@@ -141,19 +144,22 @@ def main(argv=None) -> int:
     ap.add_argument("--url", help="your portfolio site")
     ap.add_argument("--portfolio", help="portfolio.json, the master record")
     ap.add_argument("--checklist", help="the portfolio judgment pass (the portfolio-scorer skill writes it)")
+    ap.add_argument("--allow-repo", action="store_true",
+                    help="allow a work folder inside a private git repository (remembered for later runs)")
     a = ap.parse_args(argv)
     folder = pathlib.Path(a.dir).expanduser().resolve()
     if not folder.is_dir():
         print(f"REFUSED: folder not found: {folder}", file=sys.stderr)
         return 2
-    if sg.in_git_repo(folder / SAVED):
-        print("REFUSED: keep resumes and their scores outside any git repository. "
-              "Run this from a work folder such as ~/job-search.", file=sys.stderr)
-        return 2
     try:
         s = settings(a, folder)
     except ValueError as e:
         print(f"REFUSED: {folder / SAVED} isn't valid JSON ({e}). Delete it and pass the flags again.", file=sys.stderr)
+        return 2
+    if not s.get("allow_repo") and sg.in_git_repo(folder / SAVED):
+        print("REFUSED: keep resumes and their scores outside any git repository. "
+              "Run this from a work folder such as ~/job-search, or pass --allow-repo if the repository is private.",
+              file=sys.stderr)
         return 2
     if not s.get("resume") or not (s.get("role") or s.get("onet")):
         print('REFUSED: the first run needs --resume and --role (or --onet), e.g.\n'
